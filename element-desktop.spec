@@ -16,13 +16,9 @@ Summary:        A glossy Matrix collaboration client for the desktop
 License:        AGPL-3.0-or-later AND LicenseRef-Element-Commercial
 URL:            https://element.io
 
-# Architecture-specific source tarballs (downloaded by spectool at build time)
-%ifarch x86_64
+# Architecture-specific source tarballs (both must exist in SRPM)
 Source0:        https://packages.element.io/desktop/install/linux/glibc-x86-64/element-desktop-%{version}.tar.gz
-%endif
-%ifarch aarch64
-Source0:        https://packages.element.io/desktop/install/linux/glibc-aarch64/element-desktop-%{version}-arm64.tar.gz
-%endif
+Source1:        https://packages.element.io/desktop/install/linux/glibc-aarch64/element-desktop-%{version}-arm64.tar.gz
 
 # ImageMagick is required to produce the element icont at different sizes
 BuildRequires: ImageMagick
@@ -62,20 +58,20 @@ binary provided by Element at https://packages.element.io.
 %prep
 %setup -q -c
 
+%ifarch x86_64
+%global _srcdir element-desktop-%{version}
+%endif
+
+%ifarch aarch64
+%global _srcdir element-desktop-%{version}-arm64
+%endif
+
 %build
 # Nothing to build - the tarball is already a compiled Electron application.
 
 %install
-# Determine the unpacked directory name (varies by arch)
-%ifarch x86_64
-_srcdir="element-desktop-%{version}"
-%endif
-%ifarch aarch64
-_srcdir="element-desktop-%{version}-arm64"
-%endif
-
 install -d %{buildroot}/opt/element-desktop
-cp -a "${_srcdir}/." %{buildroot}/opt/element-desktop/
+cp -a "%{_srcdir}/." %{buildroot}/opt/element-desktop/
 
 # Launcher wrapper script
 install -Dm755 /dev/stdin %{buildroot}%{_bindir}/element-desktop << 'EOF'
@@ -103,7 +99,7 @@ EOF
 # high-resolution icon.png bundled in resources/build/
 for size in 16 24 32 48 64 96 128 256 512; do
     install -dm755 %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps
-    convert "${_srcdir}/resources/build/icon.png" \
+    convert "%{_srcdir}/resources/build/icon.png" \
         -resize ${size}x${size} \
         %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/element-desktop.png
 done

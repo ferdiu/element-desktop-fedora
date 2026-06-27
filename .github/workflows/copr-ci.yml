@@ -14,8 +14,8 @@ name: COPR CI build
 
 on:
   schedule:
-    - cron: "0 2 * * *"   # 02:00 UTC daily
-  workflow_dispatch:        # allow manual trigger from the Actions tab
+    - cron: "0 2 * * *" # 02:00 UTC daily
+  workflow_dispatch: # allow manual trigger from the Actions tab
     inputs:
       force_rebuild:
         description: "Force rebuild (skip version check)"
@@ -23,21 +23,21 @@ on:
         default: false
 
 env:
-  COPR_USERNAME:    ferdiu
-  COPR_PROJECT:     element-desktop
-  COPR_URL:         https://copr.fedorainfracloud.org
-  GIT_USER_NAME:    ferdiu
-  GIT_USER_EMAIL:   ferdiu@users.noreply.github.com
+  COPR_USERNAME: ferdiu
+  COPR_PROJECT: element-desktop
+  COPR_URL: https://copr.fedorainfracloud.org
+  GIT_USER_NAME: ferdiu
+  GIT_USER_EMAIL: ferdiu@users.noreply.github.com
 
   # Upstream repository used ONLY for version tag polling
-  ELEMENTWEB_REPO:  https://github.com/element-hq/element-web
+  ELEMENTWEB_REPO: https://github.com/element-hq/element-web
 
   # Source tarball base URLs (version and arch suffix appended at build time)
-  SOURCE_URL_X86:   https://packages.element.io/desktop/install/linux/glibc-x86-64
-  SOURCE_URL_ARM:   https://packages.element.io/desktop/install/linux/glibc-aarch64
+  SOURCE_URL_X86: https://packages.element.io/desktop/install/linux/glibc-x86-64
+  SOURCE_URL_ARM: https://packages.element.io/desktop/install/linux/glibc-aarch64
 
   # Spec file (relative to GITHUB_WORKSPACE)
-  SPEC_FILE:        element-desktop.spec
+  SPEC_FILE: element-desktop.spec
 
 ##############################################################################
 # Job 1: Resolve the latest upstream version from element-web tags
@@ -72,7 +72,7 @@ jobs:
           echo "ELEMENT_VERSION=$ELEMENT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.repository }}
 
@@ -123,9 +123,9 @@ jobs:
             -m "[CI] Update tracked version: element-desktop=${VER}"
           git push --force -v
 
-##############################################################################
-# Job 2: Build element-desktop if upstream is ahead of COPR
-##############################################################################
+  ##############################################################################
+  # Job 2: Build element-desktop if upstream is ahead of COPR
+  ##############################################################################
   BuildElementDesktop:
     needs: GetLatestVersion
     runs-on: ubuntu-latest
@@ -133,7 +133,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.repository }}
 
