@@ -91,40 +91,30 @@ Exec=element-desktop %U
 Icon=element-desktop
 Terminal=false
 Type=Application
-Categories=Network;InstantMessaging;Chat;
-MimeType=x-scheme-handler/element;
+Categories=Network;InstantMessaging;Chat;IRCClient;
+MimeType=x-scheme-handler/element;x-scheme-handler/io.element.desktop;
 StartupWMClass=Element
 EOF
 
-# Install icons (the tarball ships several sizes under icons/)
-for size in 16 24 32 48 64 96 128 256 512; do
-    src="${_srcdir}/icons/${size}x${size}.png"
-    if [ -f "$src" ]; then
-        install -Dm644 "$src" \
-            %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/element-desktop.png
-    fi
-done
-
-# Fallback: if the tarball ships a single top-level icon use it for 256x256
-if [ -f "${_srcdir}/element.png" ]; then
-    install -Dm644 "${_srcdir}/element.png" \
-        %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/element-desktop.png
-fi
+# Icon lives at resources/build/icon.png inside the tarball
+install -Dm644 "${_srcdir}/resources/build/icon.png" \
+    %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/element-desktop.png
 
 %post
 /usr/bin/update-desktop-database &>/dev/null || :
+/usr/bin/update-mime-database %{_datadir}/mime &>/dev/null || :
 /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 
 %postun
 /usr/bin/update-desktop-database &>/dev/null || :
-/usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
+/usr/bin/update-mime-database %{_datadir}/mime &>/dev/null || :
 
 %files
 /opt/element-desktop/
 %{_bindir}/element-desktop
 %{_datadir}/applications/element-desktop.desktop
-%{_datadir}/icons/hicolor/*/apps/element-desktop.png
+%{_datadir}/icons/hicolor/256x256/apps/element-desktop.png
 
 %changelog
-* Sat Jun 28 2026 Federico Manzella <ferdiu@users.noreply.github.com> - 1.12.22-1
+* Sat Jun 27 2026 Federico Manzella <ferdiu@users.noreply.github.com> - 1.12.22-1
 - Initial packaging of Element Desktop for Fedora via COPR
