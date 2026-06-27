@@ -56,8 +56,13 @@ This package installs the official pre-built Element Desktop Electron
 binary provided by Element at https://packages.element.io.
 
 %prep
-%setup -q -c
+tar -xf %{SOURCE0}
+tar -xf %{SOURCE1}
 
+%build
+# Nothing to build - the tarball is already a compiled Electron application.
+
+%install
 %ifarch x86_64
 %global _srcdir element-desktop-%{version}
 %endif
@@ -66,12 +71,8 @@ binary provided by Element at https://packages.element.io.
 %global _srcdir element-desktop-%{version}-arm64
 %endif
 
-%build
-# Nothing to build - the tarball is already a compiled Electron application.
-
-%install
 install -d %{buildroot}/opt/element-desktop
-cp -a "%{_srcdir}/." %{buildroot}/opt/element-desktop/
+cp -a %{_srcdir}/. %{buildroot}/opt/element-desktop/
 
 # Launcher wrapper script
 install -Dm755 /dev/stdin %{buildroot}%{_bindir}/element-desktop << 'EOF'
