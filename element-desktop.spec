@@ -24,6 +24,9 @@ Source0:        https://packages.element.io/desktop/install/linux/glibc-x86-64/e
 Source0:        https://packages.element.io/desktop/install/linux/glibc-aarch64/element-desktop-%{version}-arm64.tar.gz
 %endif
 
+# ImageMagick is required to produce the element icont at different sizes
+BuildRequires: ImageMagick
+
 # Element Desktop ships as a self-contained pre-built Electron binary.
 # The bundled Electron/Chromium runtime brings its own internals; only the
 # libraries listed below must be provided by the OS.
@@ -60,7 +63,7 @@ binary provided by Element at https://packages.element.io.
 %setup -q -c
 
 %build
-# Nothing to build — the tarball is already a compiled Electron application.
+# Nothing to build - the tarball is already a compiled Electron application.
 
 %install
 # Determine the unpacked directory name (varies by arch)
@@ -96,9 +99,14 @@ MimeType=x-scheme-handler/element;x-scheme-handler/io.element.desktop;
 StartupWMClass=Element
 EOF
 
-# Icon lives at resources/build/icon.png inside the tarball
-install -Dm644 "${_srcdir}/resources/build/icon.png" \
-    %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/element-desktop.png
+# Install icons - generate all standard hicolor sizes from the single
+# high-resolution icon.png bundled in resources/build/
+for size in 16 24 32 48 64 96 128 256 512; do
+    install -dm755 %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps
+    convert "${_srcdir}/resources/build/icon.png" \
+        -resize ${size}x${size} \
+        %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/element-desktop.png
+done
 
 %post
 /usr/bin/update-desktop-database &>/dev/null || :
@@ -113,7 +121,7 @@ install -Dm644 "${_srcdir}/resources/build/icon.png" \
 /opt/element-desktop/
 %{_bindir}/element-desktop
 %{_datadir}/applications/element-desktop.desktop
-%{_datadir}/icons/hicolor/256x256/apps/element-desktop.png
+%{_datadir}/icons/hicolor/*/apps/element-desktop.png
 
 %changelog
 * Sat Jun 27 2026 Federico Manzella <ferdiu@users.noreply.github.com> - 1.12.22-1
