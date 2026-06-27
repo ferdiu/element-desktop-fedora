@@ -1,0 +1,10 @@
+# Downloaded source tarballs — fetched at build time by spectool
+sources/
+
+# Built RPMs / SRPMs
+*.rpm
+
+# Editor and OS noise
+.DS_Store
+*~
+*.swp

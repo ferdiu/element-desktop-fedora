@@ -1,0 +1,235 @@
+# .github/workflows/copr-ci.yml
+#
+# Monitors element-hq/element-web for new releases and triggers a COPR build
+# when a newer version is available than what is currently in ferdiu/element-desktop.
+#
+# Version detection: latest semver tag from https://github.com/element-hq/element-web
+# Source download:   https://packages.element.io/desktop/install/linux/
+#
+# Required GitHub repository secrets (Settings → Secrets → Actions):
+#   COPR_BUILD_L  — copr-cli login  (from https://copr.fedorainfracloud.org/api)
+#   COPR_BUILD_T  — copr-cli token  (from https://copr.fedorainfracloud.org/api)
+
+name: COPR CI build
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 02:00 UTC daily
+  workflow_dispatch:        # allow manual trigger from the Actions tab
+    inputs:
+      force_rebuild:
+        description: "Force rebuild (skip version check)"
+        type: boolean
+        default: false
+
+env:
+  COPR_USERNAME:    ferdiu
+  COPR_PROJECT:     element-desktop
+  COPR_URL:         https://copr.fedorainfracloud.org
+  GIT_USER_NAME:    ferdiu
+  GIT_USER_EMAIL:   ferdiu@users.noreply.github.com
+
+  # Upstream repository used ONLY for version tag polling
+  ELEMENTWEB_REPO:  https://github.com/element-hq/element-web
+
+  # Source tarball base URLs (version and arch suffix appended at build time)
+  SOURCE_URL_X86:   https://packages.element.io/desktop/install/linux/glibc-x86-64
+  SOURCE_URL_ARM:   https://packages.element.io/desktop/install/linux/glibc-aarch64
+
+  # Spec file (relative to GITHUB_WORKSPACE)
+  SPEC_FILE:        element-desktop.spec
+
+##############################################################################
+# Job 1: Resolve the latest upstream version from element-web tags
+##############################################################################
+jobs:
+  GetLatestVersion:
+    runs-on: ubuntu-latest
+    outputs:
+      ELEMENT_VERSION: ${{ steps.versions.outputs.ELEMENT_VERSION }}
+
+    steps:
+      - name: Resolve latest upstream version from element-hq/element-web
+        id: versions
+        run: |
+          set -euo pipefail
+
+          ELEMENT_VERSION=$(
+            git ls-remote --tags --refs "${{ env.ELEMENTWEB_REPO }}" \
+              | awk '{print $2}' \
+              | sed 's#refs/tags/##' \
+              | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n 1 \
+              | sed 's/^v//'
+          )
+
+          echo "element-web latest tag: $ELEMENT_VERSION"
+
+          [ -n "$ELEMENT_VERSION" ] \
+            || { echo "ERROR: could not resolve element-desktop version"; exit 1; }
+
+          echo "ELEMENT_VERSION=$ELEMENT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+
+      - name: Update README badge
+        run: |
+          set -euo pipefail
+          VER="${{ steps.versions.outputs.ELEMENT_VERSION }}"
+
+          cat > README.md << EOF
+          # element-desktop-fedora
+
+          RPM packaging for [Element Desktop](https://element.io) targeting Fedora via
+          [COPR](https://copr.fedorainfracloud.org/coprs/ferdiu/element-desktop/).
+
+          A GitHub Actions workflow runs daily, polls [element-hq/element-web](https://github.com/element-hq/element-web)
+          for new release tags, and triggers a fresh COPR build automatically when a new
+          version is detected. The pre-built binaries are downloaded directly from
+          [packages.element.io](https://packages.element.io).
+
+          Supports **x86\_64** and **aarch64**.
+
+          ## Install
+
+          \`\`\`bash
+          sudo dnf copr enable ferdiu/element-desktop
+          sudo dnf install element-desktop
+          \`\`\`
+
+          ## COPR build status
+
+          [![element-desktop build](https://copr.fedorainfracloud.org/coprs/ferdiu/element-desktop/package/element-desktop/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/ferdiu/element-desktop/package/element-desktop/)
+
+          ## Workflow status
+
+          [![COPR CI build](https://github.com/ferdiu/element-desktop-fedora/actions/workflows/copr-ci.yml/badge.svg)](https://github.com/ferdiu/element-desktop-fedora/actions/workflows/copr-ci.yml)
+
+          ## Tracked version
+
+          | Package | Upstream latest |
+          |---------|----------------|
+          | element-desktop | [![element-desktop](https://img.shields.io/badge/element--desktop-${VER}-blue)](https://github.com/element-hq/element-web/releases) |
+          EOF
+
+          git config --global user.name  "${{ env.GIT_USER_NAME }}"
+          git config --global user.email "${{ env.GIT_USER_EMAIL }}"
+          git add README.md
+          git commit --allow-empty \
+            -m "[CI] Update tracked version: element-desktop=${VER}"
+          git push --force -v
+
+##############################################################################
+# Job 2: Build element-desktop if upstream is ahead of COPR
+##############################################################################
+  BuildElementDesktop:
+    needs: GetLatestVersion
+    runs-on: ubuntu-latest
+    container: fedora:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+
+      - name: Install dependencies
+        run: dnf install -y -q copr-cli python3 git rpm-build rpmdevtools curl
+
+      - name: Configure copr-cli
+        run: |
+          mkdir -p "$HOME/.config"
+          cat > "$HOME/.config/copr" << EOF
+          [copr-cli]
+          login    = ${{ secrets.COPR_BUILD_L }}
+          username = ${{ env.COPR_USERNAME }}
+          token    = ${{ secrets.COPR_BUILD_T }}
+          copr_url = ${{ env.COPR_URL }}
+          EOF
+
+      - name: Compare upstream version with COPR
+        id: check_version
+        run: |
+          set -euo pipefail
+          UPSTREAM="${{ needs.GetLatestVersion.outputs.ELEMENT_VERSION }}"
+
+          # Force rebuild if requested manually
+          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            echo "Force rebuild requested — skipping version check"
+            echo "START_BUILD=true"          >> "$GITHUB_ENV"
+            echo "BUILD_VERSION=$UPSTREAM"   >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          COPR_VERSION=$(copr-cli get-package \
+            "${{ env.COPR_USERNAME }}/${{ env.COPR_PROJECT }}" \
+            --name element-desktop \
+            | python3 -c \
+              'import json,sys; d=json.load(sys.stdin); print(d["latest_build"]["source_package"]["version"])' \
+            2>/dev/null || echo "")
+
+          echo "Upstream : $UPSTREAM"
+          echo "COPR     : ${COPR_VERSION:-<none>}"
+
+          # Normalise x.y.z to zero-padded integers for numeric comparison
+          norm() { echo "$1" | awk -F. '{printf "%05d%05d%05d\n", $1, $2, $3}'; }
+
+          if [ -z "$COPR_VERSION" ] \
+              || [ "$(norm "$UPSTREAM")" -gt "$(norm "${COPR_VERSION%-*}")" ]; then
+            echo "START_BUILD=true"        >> "$GITHUB_ENV"
+            echo "BUILD_VERSION=$UPSTREAM" >> "$GITHUB_ENV"
+            echo "→ COPR build needed"
+          else
+            echo "START_BUILD=false"       >> "$GITHUB_ENV"
+            echo "→ COPR already up to date, skipping"
+          fi
+
+      - name: Patch version into spec file
+        if: env.START_BUILD == 'true'
+        run: |
+          sed -i "s/^Version:.*/Version:        ${{ env.BUILD_VERSION }}/" \
+            "$GITHUB_WORKSPACE/${{ env.SPEC_FILE }}"
+
+      - name: Verify source URLs resolve (HEAD check)
+        if: env.START_BUILD == 'true'
+        run: |
+          VER="${{ env.BUILD_VERSION }}"
+          X86_URL="${{ env.SOURCE_URL_X86 }}/element-desktop-${VER}.tar.gz"
+          ARM_URL="${{ env.SOURCE_URL_ARM }}/element-desktop-${VER}-arm64.tar.gz"
+
+          echo "Checking: $X86_URL"
+          curl --fail --silent --head "$X86_URL" \
+            || { echo "ERROR: x86_64 tarball not found upstream"; exit 1; }
+
+          echo "Checking: $ARM_URL"
+          curl --fail --silent --head "$ARM_URL" \
+            || { echo "ERROR: aarch64 tarball not found upstream"; exit 1; }
+
+          echo "Both tarballs confirmed available."
+
+      - name: Download sources
+        if: env.START_BUILD == 'true'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/sources"
+          spectool -g -C "$GITHUB_WORKSPACE/sources/" \
+            "$GITHUB_WORKSPACE/${{ env.SPEC_FILE }}"
+
+      - name: Build source RPM
+        if: env.START_BUILD == 'true'
+        run: |
+          rpmbuild -bs \
+            --define "_sourcedir $GITHUB_WORKSPACE/sources" \
+            --define "_specdir    $GITHUB_WORKSPACE" \
+            --define "_srcrpmdir  $GITHUB_WORKSPACE" \
+            "$GITHUB_WORKSPACE/${{ env.SPEC_FILE }}"
+
+      - name: Submit COPR build
+        if: env.START_BUILD == 'true'
+        run: |
+          echo "Starting COPR build for element-desktop ${{ env.BUILD_VERSION }}"
+          copr-cli build "${{ env.COPR_PROJECT }}" \
+            "$GITHUB_WORKSPACE"/*.src.rpm
