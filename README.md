@@ -29,4 +29,4 @@ sudo dnf install element-desktop
 
 | Package | Upstream latest |
 |---------|----------------|
-| element-desktop | [![element-desktop](https://img.shields.io/badge/element--desktop-1.12.22-blue)](https://github.com/element-hq/element-web/releases) |
+| element-desktop | [![element-desktop](https://img.shields.io/badge/element--desktop-1.12.23-blue)](https://github.com/element-hq/element-web/releases) |
